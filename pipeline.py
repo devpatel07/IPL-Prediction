@@ -1,51 +1,30 @@
 import pandas as pd
 import requests
-import os
-from datetime import datetime
+import io
 
-# Configuration
-RAW_DATA_PATH = "data/raw_2026_matches/"
-PROCESSED_PATH = "phase_profiles.csv"
-
-def fetch_latest_match_data():
-    """
-    Simulates fetching 2026 live data. 
-    In production, you would point this to a Cricsheet or API endpoint.
-    """
-    print(f"[{datetime.now()}] Checking for new 2026 match data...")
-    # Placeholder for API request: 
-    # response = requests.get("https://api.cricketdata.org/v1/ipl_2026_live")
+def fetch_and_merge_2026():
+    # URL for the 2026 match center JSON/CSV
+    # In 2026, we typically use the Cricsheet or official IPL API endpoints
+    url = "https://api.example.com/ipl-2026/latest-matches" 
     
-    # For now, we simulate the 'Ingestion' of the latest match
-    # 'latest_match_ball_by_ball.csv'
-    return True 
-
-def update_dna_profiles():
-    """Recalculates the DNA based on the new total dataset."""
-    print("Recalculating Player DNA with latest 2026 stats...")
-    
-    # Load existing historical data + new 2026 data
-    df = pd.read_csv("IPL.csv", low_memory=False) 
-    
-    # Re-run the Phase Extraction Logic
-    df['phase'] = df['over'].apply(lambda x: 'Powerplay' if x < 6 else ('Middle' if x < 15 else 'Death'))
-    
-    stats = df.groupby(['batter', 'phase']).agg(
-        p_dot=('runs_batter', lambda x: (x == 0).mean()),
-        p_1=('runs_batter', lambda x: (x == 1).mean()),
-        p_4=('runs_batter', lambda x: (x == 4).mean()),
-        p_6=('runs_batter', lambda x: (x == 6).mean()),
-        p_wicket=('player_out', lambda x: x.notna().mean())
-    ).reset_index()
-
-    stats.to_csv(PROCESSED_PATH, index=False)
-    print(f"SUCCESS: {PROCESSED_PATH} updated with 2026 performance trends.")
-
-def auto_pipeline():
-    if fetch_latest_match_data():
-        update_dna_profiles()
-        # Trigger the Calibration Engine to adjust for the new 'Actual' scores
-        print("Pipeline Execution Complete.")
+    print("Fetching latest 2026 match results...")
+    try:
+        response = requests.get(url)
+        new_data = pd.read_json(io.StringIO(response.text))
+        
+        # Load your LFS-tracked master file
+        master_df = pd.read_csv("IPL.csv")
+        
+        # Append only new matches that aren't already in the master file
+        updated_df = pd.concat([master_df, new_data]).drop_duplicates(subset=['match_id', 'ball'])
+        
+        # Save back to disk - Git LFS will handle the versioning
+        updated_df.to_csv("IPL.csv", index=False)
+        print("Master IPL.csv updated with latest 2026 matches.")
+        return True
+    except Exception as e:
+        print(f"Update failed: {e}")
+        return False
 
 if __name__ == "__main__":
-    auto_pipeline()
+    fetch_and_merge_2026()
